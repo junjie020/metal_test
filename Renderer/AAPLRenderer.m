@@ -29,6 +29,52 @@ Implementation of a platform independent renderer class, which performs Metal se
     vector_uint2 _viewportSize;
 }
 
+void logBindings(NSArray<id<MTLBinding>> *bindings)
+{
+    for (id<MTLBinding> b in bindings) {
+        printf("b.used: %s, [b isUsed]: %s\n", (b.used ? "true" : "false"), ([b isUsed] ? "true" : "false"));
+        printf("b.type: %d\n", (int)b.type);
+        printf("b.name: %s\n", [b.name UTF8String]);
+        printf("b.index: %d\n", (int)b.index);
+        printf("b.argument: %s, [b isArgument]: %s\n", b.argument ? "true" : "false", [b isArgument] ? "true" : "false");
+        printf("b.access: %d\n", (int)b.access);
+        
+        printf("==========\n");
+    }
+}
+
+void logArguments(NSArray<MTLArgument*> *arguments)
+{
+    for (MTLArgument* a in arguments) {
+        printf("a.active: %s, [a isActive]: %s\n", (a.active ? "true" : "false"), ([a isActive] ? "true" : "false"));
+        printf("a.type: %d\n", (int)a.type);
+        printf("a.name: %s\n", [a.name UTF8String]);
+        printf("a.index: %d\n", (int)a.index);
+        printf("a.access: %d\n", (int)a.access);
+        
+        printf("==========\n");
+    }
+
+    printf("----********----\n");
+}
+
+void processArguments(MTLRenderPipelineReflection* reflection)
+{
+    //reflection.vertexBindings
+    printf("log vertex bindings\n");
+    logBindings(reflection.vertexBindings);
+    printf("log fragment bindings\n");
+    logBindings(reflection.fragmentBindings);
+
+    printf("log vertex arguments\n");
+    logArguments(reflection.vertexArguments);
+    printf("log fragment argumens\n");
+    logArguments(reflection.fragmentArguments);
+
+    printf("cast MTLBinding to MTLArgument\n");
+    logArguments((NSArray<MTLArgument*>*)reflection.vertexBindings);
+}
+
 - (nonnull instancetype)initWithMetalKitView:(nonnull MTKView *)mtkView
 {
     self = [super init];
@@ -51,9 +97,16 @@ Implementation of a platform independent renderer class, which performs Metal se
         pipelineStateDescriptor.fragmentFunction = fragmentFunction;
         pipelineStateDescriptor.colorAttachments[0].pixelFormat = mtkView.colorPixelFormat;
 
+        MTLRenderPipelineReflection* _reflection = nil;
+        //MTLPipelineOption _options = MTLPipelineOptionArgumentInfo|MTLPipelineOptionBufferTypeInfo;
+        MTLPipelineOption _options = MTLPipelineOptionBufferTypeInfo;
+
         _pipelineState = [_device newRenderPipelineStateWithDescriptor:pipelineStateDescriptor
+                                                                 options:_options
+                                                            reflection:&_reflection
                                                                  error:&error];
-                
+        assert(_reflection);
+        processArguments(_reflection);
         // Pipeline State creation could fail if the pipeline descriptor isn't set up properly.
         //  If the Metal API validation is enabled, you can find out more information about what
         //  went wrong.  (Metal API validation is enabled by default when a debug build is run
@@ -90,6 +143,11 @@ Implementation of a platform independent renderer class, which performs Metal se
     id<MTLCommandBuffer> commandBuffer = [_commandQueue commandBuffer];
     commandBuffer.label = @"MyCommand";
 
+    static const AAPLUniformTest uniforms[] = {
+        [0] = { .testdata = {1.0, 1.0, 1.0, 1.0}},
+        [1] = { .testdata = {2.0, 2.0, 2.0, 1.0}},
+    };
+
     // Obtain a renderPassDescriptor generated from the view's drawable textures.
     MTLRenderPassDescriptor *renderPassDescriptor = view.currentRenderPassDescriptor;
 
@@ -113,6 +171,10 @@ Implementation of a platform independent renderer class, which performs Metal se
         [renderEncoder setVertexBytes:&_viewportSize
                                length:sizeof(_viewportSize)
                               atIndex:AAPLVertexInputIndexViewportSize];
+
+        [renderEncoder setVertexBytes:uniforms
+                                length:sizeof(uniforms)
+                                atIndex:AAPLUniformTestData];
 
         // Draw the triangle.
         [renderEncoder drawPrimitives:MTLPrimitiveTypeTriangle
